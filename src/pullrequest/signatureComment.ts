@@ -64,7 +64,7 @@ function isCommentSignedByUser(comment: string, commentAuthor: string): boolean 
     // using a `string` true or false purposely as github action input cannot have a boolean value
     switch (getUseDcoFlag()) {
         case 'true':
-            return comment.match(/^.*i \s*have \s*read \s*the \s*dco \s*document \s*and \s*i \s*hereby \s*sign \s*the \s*dco.*$/) !== null
+            return comment.match(/^.*I \s*have \s*read \s*the \s*CLA \s*Document \s*and \s*I \s*hereby \s*sign \s*the \s*CLA \s*with \s*the \s*following \s*email \s*address:.*$/) !== null
         case 'false':
             return comment.match(/^.*i \s*have \s*read \s*the \s*cla \s*document \s*and \s*i \s*hereby \s*sign \s*the \s*cla.*$/) !== null
         default:
