@@ -55,6 +55,8 @@ export default async function getCommitters(): Promise<CommittersDetails[]> {
             const committer = extractUserFromCommit(edge.node.commit)
             let user = {
                 name: committer.login || committer.name,
+                email: '', // committer.author.email
+                accountType: '',
                 id: committer.databaseId || '',
                 pullRequestNo: context.issue.number
             }

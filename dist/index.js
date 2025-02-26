@@ -122,6 +122,8 @@ function getCommitters() {
                 const committer = extractUserFromCommit(edge.node.commit);
                 let user = {
                     name: committer.login || committer.name,
+                    email: '',
+                    accountType: '',
                     id: committer.databaseId || '',
                     pullRequestNo: github_1.context.issue.number
                 };
@@ -737,7 +739,7 @@ function cla(signed, committerMap) {
         text += ' You need a GitHub account to be able to sign the CLA. If you have already a GitHub account, please [add the email address used for this commit to your account](https://help.github.com/articles/why-are-my-commits-linked-to-the-wrong-user/#commits-are-not-linked-to-any-user).<br/>';
     }
     if (input.suggestRecheck() == 'true') {
-        text += '<sub>You can retrigger this bot by commenting **recheck** in this Pull Request. </sub>';
+        text += '<sub>This bot will be retriggered when the Contributor License Agreement comment has been provided. </sub>';
     }
     text += '<sub>Posted by the **CLA Assistant Lite bot**.</sub>';
     return text;
@@ -828,6 +830,10 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 const octokit_1 = __nccwpck_require__(3258);
 const github_1 = __nccwpck_require__(5438);
 const getInputs_1 = __nccwpck_require__(3611);
+const emailAddressRegex = /[\w-\.]+@([\w-]+\.)+[\w-]{2,4}/;
+const emailRegex = new RegExp(/e-mail\s*:\s*/.source + emailAddressRegex.source);
+const cleIndividualRegex = /^.*i \s*have \s*read \s*the \s*cla \s*document \s*and \s*i \s*hereby \s*sign \s*the \s*cla \s*behalf \s*on \s*myself[,]?\s*/;
+const claBusinessRegex = /^.*i \s*have \s*read \s*the \s*cla \s*document \s*and \s*i \s*hereby \s*sign \s*the \s*cla \s*behalf \s*of \s*my \s*company[,]?\s*/;
 function signatureWithPRComment(committerMap, committers) {
     return __awaiter(this, void 0, void 0, function* () {
         let repoId = github_1.context.payload.repository.id;
@@ -841,6 +847,8 @@ function signatureWithPRComment(committerMap, committers) {
         prResponse === null || prResponse === void 0 ? void 0 : prResponse.data.map((prComment) => {
             listOfPRComments.push({
                 name: prComment.user.login,
+                email: "",
+                accountType: "",
                 id: prComment.user.id,
                 comment_id: prComment.id,
                 body: prComment.body.trim().toLowerCase(),
@@ -850,8 +858,16 @@ function signatureWithPRComment(committerMap, committers) {
             });
         });
         listOfPRComments.map(comment => {
+            var _a, _b, _c, _d, _e;
             if (isCommentSignedByUser(comment.body || "", comment.name)) {
-                filteredListOfPRComments.push(comment);
+                let business = claBusinessRegex.test((_a = comment.body) !== null && _a !== void 0 ? _a : "");
+                let email = (_c = emailRegex.exec((_b = comment.body) !== null && _b !== void 0 ? _b : "")) === null || _c === void 0 ? void 0 : _c.shift();
+                email = (_e = (_d = email === null || email === void 0 ? void 0 : email.match(emailAddressRegex)) === null || _d === void 0 ? void 0 : _d.shift()) === null || _e === void 0 ? void 0 : _e.trim();
+                if (email) {
+                    comment.email = email;
+                    comment.accountType = business ? "business" : "personal";
+                    filteredListOfPRComments.push(comment);
+                }
             }
         });
         for (var i = 0; i < filteredListOfPRComments.length; i++) {
@@ -884,9 +900,10 @@ function isCommentSignedByUser(comment, commentAuthor) {
     // using a `string` true or false purposely as github action input cannot have a boolean value
     switch ((0, getInputs_1.getUseDcoFlag)()) {
         case 'true':
-            return comment.match(/^.*i \s*have \s*read \s*the \s*dco \s*document \s*and \s*i \s*hereby \s*sign \s*the \s*dco.*$/) !== null;
+            return comment.match(/^.*i \s*have \s*read \s*the \s*dco \s*document \s*and \s*i \s*hereby \s*sign \s*the \s*dco\s*/) !== null;
         case 'false':
-            return comment.match(/^.*i \s*have \s*read \s*the \s*cla \s*document \s*and \s*i \s*hereby \s*sign \s*the \s*cla.*$/) !== null;
+            return (comment.match(new RegExp(cleIndividualRegex.source + emailRegex.source + /\.?$/.source)) !== null) ||
+                (comment.match(new RegExp(claBusinessRegex.source + emailRegex.source + /\.?$/.source)) !== null);
         default:
             return false;
     }
@@ -1013,8 +1030,12 @@ function createClaFileAndPRComment(committers, committerMap) {
 }
 function prepareCommiterMap(committers, claFileContent) {
     let committerMap = getInitialCommittersMap();
-    committerMap.notSigned = committers.filter(committer => !(claFileContent === null || claFileContent === void 0 ? void 0 : claFileContent.signedContributors.some(cla => committer.id === cla.id)));
-    committerMap.signed = committers.filter(committer => claFileContent === null || claFileContent === void 0 ? void 0 : claFileContent.signedContributors.some(cla => committer.id === cla.id));
+    const validDateOffset = 15811200000; // 183 days in millis
+    const currentDate = Date.now();
+    committerMap.notSigned = committers.filter(committer => !(claFileContent === null || claFileContent === void 0 ? void 0 : claFileContent.signedContributors.some(cla => (committer.id === cla.id) &&
+        ((currentDate - Date.parse(cla.created_at)) < validDateOffset))));
+    committerMap.signed = committers.filter(committer => claFileContent === null || claFileContent === void 0 ? void 0 : claFileContent.signedContributors.some(cla => (committer.id === cla.id) &&
+        ((currentDate - Date.parse(cla.created_at)) < validDateOffset)));
     committers.map(committer => {
         if (!committer.id) {
             committerMap.unknown.push(committer);
@@ -1132,7 +1153,11 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.getPrSignComment = void 0;
 const input = __importStar(__nccwpck_require__(3611));
 function getPrSignComment() {
-    return input.getCustomPrSignComment() || "I have read the CLA Document and I hereby sign the CLA";
+    const prSignComment = "I have read the CLA Document and I hereby sign the CLA behalf on myself, e-mail: example@example.com\n\n" +
+        "or\n\n" +
+        "I have read the CLA Document and I hereby sign the CLA behalf of my company, e-mail: example@example.com\n\n" +
+        "Signature is valid for 6 months.";
+    return input.getCustomPrSignComment() || prSignComment;
 }
 exports.getPrSignComment = getPrSignComment;
 

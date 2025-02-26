@@ -5,6 +5,11 @@ import { getUseDcoFlag, getCustomPrSignComment } from '../shared/getInputs'
 
 import * as core from '@actions/core'
 
+const emailAddressRegex = /[\w-\.]+@([\w-]+\.)+[\w-]{2,4}/
+const emailRegex = new RegExp(/e-mail\s*:\s*/.source + emailAddressRegex.source)
+const cleIndividualRegex = /^.*i \s*have \s*read \s*the \s*cla \s*document \s*and \s*i \s*hereby \s*sign \s*the \s*cla \s*behalf \s*on \s*myself[,]?\s*/
+const claBusinessRegex = /^.*i \s*have \s*read \s*the \s*cla \s*document \s*and \s*i \s*hereby \s*sign \s*the \s*cla \s*behalf \s*of \s*my \s*company[,]?\s*/
+
 export default async function signatureWithPRComment(committerMap: CommitterMap, committers): Promise<ReactedCommitterMap> {
 
     let repoId = context.payload.repository!.id
@@ -19,6 +24,8 @@ export default async function signatureWithPRComment(committerMap: CommitterMap,
     prResponse?.data.map((prComment) => {
         listOfPRComments.push({
             name: prComment.user.login,
+            email: "",
+            accountType: "",
             id: prComment.user.id,
             comment_id: prComment.id,
             body: prComment.body.trim().toLowerCase(),
@@ -29,7 +36,14 @@ export default async function signatureWithPRComment(committerMap: CommitterMap,
     })
     listOfPRComments.map(comment => {
         if (isCommentSignedByUser(comment.body || "", comment.name)) {
-            filteredListOfPRComments.push(comment)
+            let business = claBusinessRegex.test(comment.body ?? "")
+            let email = emailRegex.exec(comment.body ?? "")?.shift()
+            email = email?.match(emailAddressRegex)?.shift()?.trim()
+            if (email) {
+                comment.email = email
+                comment.accountType = business ? "business" : "personal"
+                filteredListOfPRComments.push(comment)
+            }
         }
     })
     for (var i = 0; i < filteredListOfPRComments.length; i++) {
@@ -64,9 +78,10 @@ function isCommentSignedByUser(comment: string, commentAuthor: string): boolean 
     // using a `string` true or false purposely as github action input cannot have a boolean value
     switch (getUseDcoFlag()) {
         case 'true':
-            return comment.match(/^.*i \s*have \s*read \s*the \s*dco \s*document \s*and \s*i \s*hereby \s*sign \s*the \s*dco.*$/) !== null
+            return comment.match(/^.*i \s*have \s*read \s*the \s*dco \s*document \s*and \s*i \s*hereby \s*sign \s*the \s*dco\s*/) !== null
         case 'false':
-            return comment.match(/^.*i \s*have \s*read \s*the \s*cla \s*document \s*and \s*i \s*hereby \s*sign \s*the \s*cla.*$/) !== null
+            return (comment.match(new RegExp(cleIndividualRegex.source + emailRegex.source + /\.?$/.source)) !== null) ||
+                (comment.match(new RegExp(claBusinessRegex.source + emailRegex.source + /\.?$/.source)) !== null)
         default:
             return false
     }

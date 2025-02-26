@@ -97,7 +97,7 @@ function cla(signed: boolean, committerMap: CommitterMap): string {
     }
 
     if (input.suggestRecheck() == 'true') {
-        text += '<sub>You can retrigger this bot by commenting **recheck** in this Pull Request. </sub>'
+        text += '<sub>This bot will be retriggered when the Contributor License Agreement comment has been provided. </sub>'
     }
     text += '<sub>Posted by the **CLA Assistant Lite bot**.</sub>'
     return text
